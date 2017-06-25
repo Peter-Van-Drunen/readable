@@ -1,0 +1,6 @@
+[package]
+name = "readable"
+version = "0.1.0"
+authors = ["Peter-Van-Drunen <peetevd@gmail.com>"]
+
+[dependencies]
