@@ -4,7 +4,7 @@ use std::vec::IntoIter;
 //Program entry point
 fn main() {
 
-    let table = tokenizer("have value be 12 plus 23?".to_string());
+    let table = tokenizer("have value be 12 into 23?".to_string());
 
     for i in &table {
         println!("{}: {}", i.id, i.val);
@@ -14,8 +14,9 @@ fn main() {
 
     let new_ast = transformer(ast);
 
-    //let jscode = code_gen(new_ast);
+    let output: String = code_gen(&new_ast);
 
+    println!("{}", output);
 }
 
 //struct for holding tokens
@@ -111,6 +112,7 @@ fn parser(vt: Vec<Token>) ->  Node {
             "number" => {
 
                 if token_iter.peek().unwrap().val == "?".to_string() {
+                    token_iter.next();
                     return Node { t: "number_literal".to_string(), val: token.val, kids: Vec::new() };
                 } else {
 
@@ -125,7 +127,7 @@ fn parser(vt: Vec<Token>) ->  Node {
                     //Recursively loop to gather the rest of the kids.
                     while let Some(next_token) = token_iter.next() {
                         if next_token.id == "?".to_string() {
-                            break;
+                            return exp_node;
                         }
                         //Skip the expression operator and then recurse on the follow token.
                         exp_node.kids.push(walk(next_token, &mut token_iter));
@@ -135,7 +137,7 @@ fn parser(vt: Vec<Token>) ->  Node {
 
                 }
             },
-            //declaration and assignment
+            //declaration and assignment, name
             "have" => {
 
                 let mut have_node = Node { t: "declaration_expression".to_string(), val: token.val, kids: Vec::new() };
@@ -146,21 +148,19 @@ fn parser(vt: Vec<Token>) ->  Node {
 
                 //See if there's assignment inline. if there is we need to loop
                 if token_iter.peek().unwrap().val == "be".to_string() {
+                    token_iter.next();
+                    have_node.kids.push( Node { t: "assignment_expression".to_string(), val: "be".to_string(), kids: Vec::new() });
                     //build the rest of the expression tree for the current statement (statements end with ?)
                     while let Some(next_token) = token_iter.next() {
                         if next_token.id == "?".to_string() {
-                            break;
+                            return have_node;
                         }
-                        have_node.kids[0].kids.push(walk(next_token, &mut token_iter));
+                        have_node.kids[1].kids.push(walk(next_token, &mut token_iter));
                     }
                 }
                 return have_node;
             },
-            //End of line
-            "?" => {
-                return Node { t: "end_line".to_string(), val: "?".to_string(), kids: Vec::new() };
-            },
-            _ => return Node { t: "error_in_parser".to_string(), val: "invalid token".to_string(), kids: Vec::new() }
+            _ => return Node { t: "error_in_parser".to_string(), val: token.val, kids: Vec::new() }
         }
 
     }
@@ -178,7 +178,7 @@ fn parser(vt: Vec<Token>) ->  Node {
 
 fn traverse (node_slice: Node) -> Node {
     match node_slice.t.as_str(){
-        "number_literal" => {
+        "number_literal" | "name" => {
             return node_slice;
         },
         "declaration_expression" => {
@@ -190,7 +190,40 @@ fn traverse (node_slice: Node) -> Node {
 
             return exp_node;
         },
-        _ => return Node { t: "error_in_transformer".to_string(), val: "invalid node".to_string(), kids: Vec::new() }
+        "assignment_expression" => {
+            let mut ass_node = Node { t: "assignment_expression".to_string(), val: "=".to_string(), kids: Vec::new() };
+
+            for kid in node_slice.kids {
+                ass_node.kids.push(traverse(kid));
+            }
+
+            return ass_node;
+        },
+        "operator_expression" => {
+            let mut op_node: Node = Node { t: "error_in_transformer".to_string(), val: "".to_string(), kids: Vec::new() };
+            match node_slice.val.as_str() {
+                "plus" => {
+                    op_node = Node { t: "operator_expression".to_string(), val: "+".to_string(), kids: Vec::new() };
+                },
+                "minus" => {
+                    op_node = Node { t: "operator_expression".to_string(), val: "-".to_string(), kids: Vec::new() };
+                },
+                "times" => {
+                    op_node = Node { t: "operator_expression".to_string(), val: "*".to_string(), kids: Vec::new() };
+                },
+                "into" => {
+                    op_node = Node { t: "operator_expression".to_string(), val: "/".to_string(), kids: Vec::new() };
+                }
+                _ => return Node { t: "error_in_transformer".to_string(), val: node_slice.val, kids: Vec::new() }
+            }
+            for kid in node_slice.kids {
+                op_node.kids.push(traverse(kid));
+            }
+
+            return op_node;
+        },
+        "end_line" => return Node { t: "end_line".to_string(), val: ";".to_string(), kids: Vec::new() },
+        _ => return Node { t: "error_in_transformer".to_string(), val: node_slice.val, kids: Vec::new() }
 
     }
 }
@@ -204,4 +237,57 @@ fn transformer (ast: Node) -> Node {
     }
 
     return new_ast;
+}
+
+
+fn code_gen (new_ast: &Node) -> String {
+    match new_ast.t.as_str() {
+        "program" => {
+            let mut s: String = "".to_string();
+
+            for kid in &new_ast.kids {
+                s.push_str(code_gen(&kid).as_str());
+                s.push_str(";\n");
+            }
+
+            return s;
+        },
+        "declaration_expression" => {
+            let mut s: String = "".to_string();
+
+            s.push_str(new_ast.val.as_str());
+            for kid in &new_ast.kids {
+                s.push_str(" ");
+                s.push_str(code_gen(&kid).as_str());
+            }
+
+            return s;
+        },
+        "assignment_expression" => {
+            let mut s: String = "".to_string();
+
+            s.push_str(new_ast.val.as_str());
+            for kid in &new_ast.kids {
+                s.push_str(" ");
+                s.push_str(code_gen(&kid).as_str());
+            }
+            return s;
+        },
+        "operator_expression" => {
+            let mut s: String = "".to_string();
+
+            s.push_str(code_gen(&new_ast.kids[0]).as_str());
+            s.push_str(" ");
+            s.push_str(new_ast.val.as_str());
+            s.push_str(" ");
+            s.push_str(code_gen(&new_ast.kids[1]).as_str());
+            return s;
+        },
+        "name" | "number_literal" => {
+            return new_ast.val.clone();
+        },
+        _ => {
+            return "error in code_gen, value was: ".to_string() + new_ast.t.as_str() + new_ast.val.as_str();
+        }
+    }
 }
