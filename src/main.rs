@@ -10,8 +10,11 @@ fn main() {
         println!("{}: {}", i.id, i.val);
     }
 
-    let ast_result = parser(table);
+    let ast = parser(table);
 
+    let new_ast = transformer(ast);
+
+    //let jscode = code_gen(new_ast);
 
 }
 
@@ -103,63 +106,63 @@ fn parser(vt: Vec<Token>) ->  Node {
 
     fn walk(token: Token, mut token_iter: &mut Peekable<IntoIter<Token>>) -> Node {
 
-        //Number literal
-        if token.id == "number".to_string() {
+        match token.id.as_str() {
+            //number literals and operator expressions
+            "number" => {
 
-            if token_iter.peek().unwrap().val == "?".to_string() {
-                return Node { t: "number_literal".to_string(), val: token.val, kids: Vec::new() };
-            } else {
+                if token_iter.peek().unwrap().val == "?".to_string() {
+                    return Node { t: "number_literal".to_string(), val: token.val, kids: Vec::new() };
+                } else {
 
-                // same our number for later
-                let num_node = Node { t: "number_literal".to_string(), val: token.val, kids: Vec::new() };
-                //If the number literal isn't on it's own, we know it is an operator expression
-                let mut exp_node = Node { t: "OperatorExpression".to_string(), val: token_iter.next().unwrap().val, kids: Vec::new() };
+                    // same our number for later
+                    let num_node = Node { t: "number_literal".to_string(), val: token.val, kids: Vec::new() };
+                    //If the number literal isn't on it's own, we know it is an operator expression
+                    let mut exp_node = Node { t: "operator_expression".to_string(), val: token_iter.next().unwrap().val, kids: Vec::new() };
 
-                //add our current token numlit to the kids of the expression
-                exp_node.kids.push( num_node );
+                    //add our current token numlit to the kids of the expression
+                    exp_node.kids.push( num_node );
 
-                //Recursively loop to gather the rest of the kids.
-                while let Some(next_token) = token_iter.next() {
-                    if next_token.id == "?".to_string() {
-                        break;
+                    //Recursively loop to gather the rest of the kids.
+                    while let Some(next_token) = token_iter.next() {
+                        if next_token.id == "?".to_string() {
+                            break;
+                        }
+                        //Skip the expression operator and then recurse on the follow token.
+                        exp_node.kids.push(walk(next_token, &mut token_iter));
                     }
-                    //Skip the expression operator and then recurse on the follow token.
-                    exp_node.kids.push(walk(next_token, &mut token_iter));
+
+                    return exp_node;
+
                 }
+            },
+            //declaration and assignment
+            "have" => {
 
-                return exp_node;
+                let mut have_node = Node { t: "declaration_expression".to_string(), val: token.val, kids: Vec::new() };
 
-            }
+                //Put the name as a kid
+                let name_token = token_iter.next().unwrap();
+                have_node.kids.push( Node { t: "name".to_string(), val: name_token.val, kids: Vec::new() });
 
-
-
-
-        } else
-
-        //Variable dec and assignment
-        if token.id == "have".to_string() {
-
-            let mut have_node = Node { t: "DeclarationExpression".to_string(), val: token.val, kids: Vec::new() };
-
-            //Put the name as a kid
-            let name_token = token_iter.next().unwrap();
-            have_node.kids.push(walk(name_token, &mut token_iter));
-
-            //See if there's assignment inline. if there is we need to loop
-            if token_iter.peek().unwrap().val == "be".to_string() {
-                //If there is, build the rest of the expression tree for the current statement (statements end with ?)
-                while let Some(next_token) = token_iter.next() {
-                    if next_token.id == "?".to_string() {
-                        break;
+                //See if there's assignment inline. if there is we need to loop
+                if token_iter.peek().unwrap().val == "be".to_string() {
+                    //build the rest of the expression tree for the current statement (statements end with ?)
+                    while let Some(next_token) = token_iter.next() {
+                        if next_token.id == "?".to_string() {
+                            break;
+                        }
+                        have_node.kids[0].kids.push(walk(next_token, &mut token_iter));
                     }
-                    have_node.kids[0].kids.push(walk(next_token, &mut token_iter));
                 }
-            }
-            return have_node;
+                return have_node;
+            },
+            //End of line
+            "?" => {
+                return Node { t: "end_line".to_string(), val: "?".to_string(), kids: Vec::new() };
+            },
+            _ => return Node { t: "error_in_parser".to_string(), val: "invalid token".to_string(), kids: Vec::new() }
         }
 
-        //If no matches are found return error_in_parser
-        return Node { t: "error_in_parser".to_string(), val: "invalid token".to_string(), kids: Vec::new() };
     }
 
 
@@ -171,4 +174,34 @@ fn parser(vt: Vec<Token>) ->  Node {
     }
 
     return ast;
+}
+
+fn traverse (node_slice: Node) -> Node {
+    match node_slice.t.as_str(){
+        "number_literal" => {
+            return node_slice;
+        },
+        "declaration_expression" => {
+            let mut exp_node = Node { t: "declaration_expression".to_string(), val: "var".to_string(), kids: Vec::new() };
+
+            for kid in node_slice.kids {
+                exp_node.kids.push(traverse(kid));
+            }
+
+            return exp_node;
+        },
+        _ => return Node { t: "error_in_transformer".to_string(), val: "invalid node".to_string(), kids: Vec::new() }
+
+    }
+}
+
+fn transformer (ast: Node) -> Node {
+    let mut new_ast = Node { t: "program".to_string(), val: "".to_string(), kids: Vec::new() };
+
+    //Do something for each child node
+    for kid in ast.kids {
+        new_ast.kids.push(traverse(kid));
+    }
+
+    return new_ast;
 }
