@@ -9,6 +9,10 @@ fn main() {
     for i in &table {
         println!("{}: {}", i.id, i.val);
     }
+
+    let ast_result = parser(table);
+
+
 }
 
 //struct for holding tokens
@@ -35,7 +39,7 @@ fn tokenizer(input: String) -> Vec<Token> {
         }
 
         if the_char == '?' {
-            vt.push( Token { id: "?".to_string(), val: ";".to_string() });
+            vt.push( Token { id: "?".to_string(), val: "?".to_string() });
             current += 1;
             continue;
         }
@@ -51,17 +55,17 @@ fn tokenizer(input: String) -> Vec<Token> {
             }
 
             if value == "plus".to_string() {
-                vt.push( Token { id: "plus".to_string(), val: "+".to_string() });
+                vt.push( Token { id: "plus".to_string(), val: "plus".to_string() });
                 continue;
             }
 
             if value == "have".to_string() {
-                vt.push( Token { id: "have".to_string(), val: "var".to_string() });
+                vt.push( Token { id: "have".to_string(), val: "have".to_string() });
                 continue;
             }
 
             if value == "be".to_string() {
-                vt.push( Token { id: "be".to_string(), val: "=".to_string() });
+                vt.push( Token { id: "be".to_string(), val: "be".to_string() });
                 continue;
             }
 
@@ -95,19 +99,63 @@ struct Node {
     kids: Vec<Node>
 }
 
-
-
 fn parser(vt: Vec<Token>) ->  Node {
 
-    fn walk(token: Token, token_iter: &mut Peekable<IntoIter<Token>>) -> Node {
+    fn walk(token: Token, mut token_iter: &mut Peekable<IntoIter<Token>>) -> Node {
 
-        //If the token is a number, return a number literal node with the value of the token
+        //Number literal
         if token.id == "number".to_string() {
-            return Node { t: "number_literal".to_string(), val: token.val, kids: Vec::new() };
-        }
 
-        if token.id == "".to_string() {
+            if token_iter.peek().unwrap().val == "?".to_string() {
+                return Node { t: "number_literal".to_string(), val: token.val, kids: Vec::new() };
+            } else {
 
+                // same our number for later
+                let num_node = Node { t: "number_literal".to_string(), val: token.val, kids: Vec::new() };
+                //If the number literal isn't on it's own, we know it is an operator expression
+                let mut exp_node = Node { t: "OperatorExpression".to_string(), val: token_iter.next().unwrap().val, kids: Vec::new() };
+
+                //add our current token numlit to the kids of the expression
+                exp_node.kids.push( num_node );
+
+                //Recursively loop to gather the rest of the kids.
+                while let Some(next_token) = token_iter.next() {
+                    if next_token.id == "?".to_string() {
+                        break;
+                    }
+                    //Skip the expression operator and then recurse on the follow token.
+                    exp_node.kids.push(walk(next_token, &mut token_iter));
+                }
+
+                return exp_node;
+
+            }
+
+
+
+
+        } else
+
+        //Variable dec and assignment
+        if token.id == "have".to_string() {
+
+            let mut have_node = Node { t: "DeclarationExpression".to_string(), val: token.val, kids: Vec::new() };
+
+            //Put the name as a kid
+            let name_token = token_iter.next().unwrap();
+            have_node.kids.push(walk(name_token, &mut token_iter));
+
+            //See if there's assignment inline. if there is we need to loop
+            if token_iter.peek().unwrap().val == "be".to_string() {
+                //If there is, build the rest of the expression tree for the current statement (statements end with ?)
+                while let Some(next_token) = token_iter.next() {
+                    if next_token.id == "?".to_string() {
+                        break;
+                    }
+                    have_node.kids[0].kids.push(walk(next_token, &mut token_iter));
+                }
+            }
+            return have_node;
         }
 
         //If no matches are found return error_in_parser
