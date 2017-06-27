@@ -1,0 +1,4 @@
+have val be 12 plus 223?
+have thenumber be 11?
+have avalue be 12 times 12?
+have it be 12342 into 222222?

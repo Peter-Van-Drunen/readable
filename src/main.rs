@@ -1,22 +1,59 @@
 use std::iter::Peekable;
 use std::vec::IntoIter;
+use std::env;
+use std::error::Error;
+use std::fs::File;
+use std::io::prelude::*;
+use std::path::Path;
 
 //Program entry point
 fn main() {
+    let file_arg: String = env::args().nth(1).unwrap();
+    let path = Path::new(&file_arg);
+    let display = path.display();
 
-    let table = tokenizer("have value be 12 into 23?".to_string());
+    let mut in_file = match File::open(&path) {
+            // The `description` method of `io::Error` returns a string that
+            // describes the error
+            Err(why) => panic!("couldn't open {}: {}", display,
+                                                       why.description()),
+            Ok(in_file) => in_file
+    };
 
-    for i in &table {
-        println!("{}: {}", i.id, i.val);
+    let mut s = String::new();
+
+    in_file.read_to_string(&mut s);
+
+    println!("Made it thru file input");
+    let table = tokenizer(s);
+    println!("made it thru tokenizer");
+    let ast = parser(table);
+    println!("made it thru parser");
+    let new_ast = transformer(ast);
+    println!("made it thru transformer");
+    let output: String = code_gen(&new_ast);
+    println!("made it thru code_gen");
+
+    let out_path = Path::new("out.js");
+    let display = out_path.display();
+
+    let mut file = match File::create(&out_path) {
+        Err(why) => panic!("couldn't create {}: {}",
+                           display,
+                           why.description()),
+        Ok(file) => file,
+    };
+
+    // Write the `LOREM_IPSUM` string to `file`, returns `io::Result<()>`
+    match file.write_all(output.as_bytes()) {
+        Err(why) => {
+            panic!("couldn't write to {}: {}", display,
+                                               why.description())
+        },
+        Ok(_) => println!("successfully wrote to {}", display)
     }
 
-    let ast = parser(table);
-
-    let new_ast = transformer(ast);
-
-    let output: String = code_gen(&new_ast);
-
-    println!("{}", output);
+    println!("Success!");
 }
 
 //struct for holding tokens
@@ -96,7 +133,7 @@ fn tokenizer(input: String) -> Vec<Token> {
     return vt;
 }
 
-//struct for holding tokens
+//struct for holding ast nodes
 struct Node {
     t: String,
     val: String,
